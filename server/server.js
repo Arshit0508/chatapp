@@ -7,7 +7,7 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
-app.use(express.static(path.join(__dirname, 'frontend')));
+app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
 const users = new Map();           // socket.id -> { username, room }
 const usernameToSocket = new Map(); // username -> socket.id (for DMs/lookups)
