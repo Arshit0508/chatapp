@@ -88,12 +88,13 @@ io.on('connection', (socket) => {
     socket.emit('rooms_list', Array.from(rooms));
 
     socket.on('join', (data) => {
-        const username = data.username;
-        const room = data.room;
+    const username = socket.user.username;
+    const room = data.room;
 
         users.set(socket.id, { username, room });
         usernameToSocket.set(username, socket.id);
         socket.join(room);
+        console.log("Rooms for", username, ":", Array.from(socket.rooms));
         socket.join('user:' + username); // personal channel for DMs
 
         console.log(username + ' joined room: ' + room);
@@ -127,6 +128,7 @@ io.on('connection', (socket) => {
         console.log('[' + user.room + '] ' + user.username + ': ' + data.text);
 
         pushHistory(roomHistory, user.room, messageData);
+        
         io.to(user.room).emit('new_message', messageData);
     });
 

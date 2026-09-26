@@ -594,17 +594,22 @@
 <body>
 
 <!-- LOGIN -->
+<!-- LOGIN -->
 <div class="login-screen" id="login-screen">
     <div class="login-logo">&#128172;</div>
+
     <h1>ChatApp</h1>
-    <p>Fast, simple, secure messaging</p>
-    <input type="text" id="username-input" placeholder="Your name..." maxlength="20" />
-    <select id="room-select">
-        <option value="general">&#127758; General</option>
-        <option value="tech">&#128187; Tech</option>
-        <option value="random">&#127922; Random</option>
-    </select>
-    <button class="join-btn" onclick="joinChat()">Continue</button>
+    <p>Login to continue</p>
+
+    <input type="email" id="email-input" placeholder="Email" />
+
+    <input type="password" id="password-input" placeholder="Password" />
+
+    <button class="join-btn" onclick="loginUser()">
+        Login
+    </button>
+
+    <p id="login-error"></p>
 </div>
 
 <!-- MAIN APP -->
@@ -688,11 +693,84 @@
 </div>
 
 <script>
-    var socket = io({
+   var socket = io({
+        autoConnect: false,
         auth: {
             token: localStorage.getItem('token')
         }
     });
+
+    socket.on("connect_error", function (error) {
+        console.log("Socket connection error:", error.message);
+    });
+
+    async function loginUser() {
+        var email = document.getElementById("email-input").value;
+        var password = document.getElementById("password-input").value;
+        var errorElement = document.getElementById("login-error");
+
+        errorElement.textContent = "";
+
+        if (!email || !password) {
+            errorElement.textContent = "Email and password are required";
+            return;
+        }
+
+        try {
+            var response = await fetch("/api/auth/login", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    email: email,
+                    password: password
+                })
+            });
+
+            var data = await response.json();
+
+            if (!response.ok) {
+                errorElement.textContent = data.message;
+                return;
+            }
+
+            localStorage.setItem("token", data.token);
+
+            socket.auth.token = data.token;
+
+            socket.once("connect", function () {
+                myUsername = data.user.username;
+                currentRoom = "general";
+
+                socket.emit("join", {
+                    room: currentRoom
+                });
+
+                document.getElementById("login-screen").style.display = "none";
+                document.getElementById("chat-app").style.display = "flex";
+
+                document.getElementById("my-avatar").textContent =
+                    getInitial(myUsername);
+
+                document.getElementById("current-room-title").textContent =
+                    "General";
+
+                document.getElementById("header-avatar").innerHTML =
+                    roomIcons["general"] || "&#128172;";
+
+                renderRooms(availableRooms);
+
+                document.getElementById("msg-input").focus();
+            });
+
+            socket.connect();
+
+        } catch (error) {
+            errorElement.textContent = "Unable to connect to server";
+            console.error(error);
+        }
+    }
 var myUsername = "";
 var currentRoom = "general";
 var typingTimer = null;
@@ -734,9 +812,7 @@ function joinChat() {
     document.getElementById("msg-input").focus();
 }
 
-document.getElementById("username-input").addEventListener("keydown", function(e) {
-    if (e.key === "Enter") joinChat();
-});
+
 
 function renderRooms(rooms) {
     var container = document.getElementById("rooms-list");
@@ -809,10 +885,21 @@ socket.on("room_history", function(data) {
         addMessage(m.username, m.text, m.timestamp, m.username === myUsername, m.id, m.reactions || {});
     }
 });
+    
+    socket.on("new_message", function (data) {
 
-socket.on("new_message", function(data) {
-    addMessage(data.username, data.text, data.timestamp, data.username === myUsername, data.id, {});
-});
+        
+
+        addMessage(
+            data.username,
+            data.text,
+            data.timestamp,
+            data.username === myUsername,
+            data.id,
+            {}
+        );
+
+    });
 
 socket.on("user_joined", function(data) { addSystemMessage(data.message); });
 socket.on("user_left", function(data) { addSystemMessage(data.message); });
