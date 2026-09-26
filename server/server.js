@@ -10,6 +10,10 @@ const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+app.use(express.json());
+const authRoutes = require('./routes/auth');
+app.use('/api/auth', authRoutes);
+
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
 const users = new Map();           // socket.id -> { username, room }
