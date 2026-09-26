@@ -3,6 +3,9 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 
+require('dotenv').config();
+const connectDB = require('./config/db');
+
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
@@ -239,6 +242,8 @@ io.on('connection', (socket) => {
 
 const PORT = process.env.PORT || 3000;
 
-server.listen(PORT, function() {
-    console.log('Chat Server running at http://localhost:' + PORT);
+connectDB().then(function() {
+    server.listen(PORT, function() {
+        console.log('Chat Server running at http://localhost:' + PORT);
+    });
 });
