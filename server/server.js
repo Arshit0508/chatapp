@@ -2,6 +2,7 @@ const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
+const jwt = require('jsonwebtoken');
 
 require('dotenv').config();
 const connectDB = require('./config/db');
@@ -9,6 +10,27 @@ const connectDB = require('./config/db');
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
+io.use(function(socket, next) {
+    try {
+        const token = socket.handshake.auth.token;
+
+        if (!token) {
+            return next(new Error('Authentication token required'));
+        }
+
+        const decoded = jwt.verify(
+            token,
+            process.env.JWT_SECRET
+        );
+
+        socket.user = decoded;
+
+        next();
+
+    } catch (error) {
+        next(new Error('Invalid or expired token'));
+    }
+});
 
 app.use(express.json());
 const authRoutes = require('./routes/auth');

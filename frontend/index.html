@@ -688,7 +688,11 @@
 </div>
 
 <script>
-var socket = io();
+    var socket = io({
+        auth: {
+            token: localStorage.getItem('token')
+        }
+    });
 var myUsername = "";
 var currentRoom = "general";
 var typingTimer = null;
