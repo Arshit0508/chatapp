@@ -3,6 +3,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const Message = require('./models/Message');
 
 require('dotenv').config();
 const connectDB = require('./config/db');
@@ -87,50 +88,106 @@ io.on('connection', (socket) => {
     console.log('New connection: ' + socket.id);
     socket.emit('rooms_list', Array.from(rooms));
 
-    socket.on('join', (data) => {
+socket.on('join', async (data) => {
     const username = socket.user.username;
     const room = data.room;
 
-        users.set(socket.id, { username, room });
-        usernameToSocket.set(username, socket.id);
-        socket.join(room);
-        console.log("Rooms for", username, ":", Array.from(socket.rooms));
-        socket.join('user:' + username); // personal channel for DMs
+    const allowedRooms = ['general', 'tech', 'random'];
 
-        console.log(username + ' joined room: ' + room);
+    if (!allowedRooms.includes(room)) {
+        return;
+    }
 
-        io.to(room).emit('user_joined', {
-            username: username,
-            message: username + ' joined the chat',
-            timestamp: getTime()
-        });
+    users.set(socket.id, { username, room });
+    usernameToSocket.set(username, socket.id);
 
-        // Send recent history for the room, with current reaction state attached
-        const history = (roomHistory.get(room) || []).map(function(msg) {
-            return Object.assign({}, msg, { reactions: reactionSummary(msg.id) });
-        });
-        socket.emit('room_history', { room: room, messages: history });
+    socket.join(room);
 
-        sendRoomUsers(room);
+    console.log(
+        "Rooms for",
+        username,
+        ":",
+        Array.from(socket.rooms)
+    );
+
+    socket.join('user:' + username);
+
+    console.log(username + ' joined room: ' + room);
+
+    io.to(room).emit('user_joined', {
+        username: username,
+        message: username + ' joined the chat',
+        timestamp: getTime()
     });
 
-    socket.on('send_message', (data) => {
-        const user = users.get(socket.id);
-        if (!user) return;
+    // Send recent history from MongoDB
+    const history = await Message.find({
+        room: room
+    })
+    .sort({ createdAt: -1 })
+    .limit(20)
+    .lean();
+
+    history.reverse();
+
+    socket.emit('room_history', {
+        room: room,
+        messages: history.map(function(message) {
+            return {
+                username: message.username,
+                text: message.text,
+                timestamp: message.createdAt.toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit'
+                }),
+                id: message._id.toString(),
+                reactions: {}
+            };
+        })
+    });
+
+    sendRoomUsers(room);
+});
+
+    socket.on('send_message', async (data) => {
+    const user = users.get(socket.id);
+    if (!user) return;
+
+    const text = data.text.trim();
+
+    if (!text || text.length > 500) return;
+
+    try {
+        const savedMessage = await Message.create({
+            room: user.room,
+            username: user.username,
+            text: text
+        });
 
         const messageData = {
-            username: user.username,
-            text: data.text,
-            timestamp: getTime(),
-            id: Date.now() + '-' + Math.random().toString(36).slice(2, 8)
+            username: savedMessage.username,
+            text: savedMessage.text,
+            timestamp: savedMessage.createdAt.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit'
+            }),
+            id: savedMessage._id.toString()
         };
 
-        console.log('[' + user.room + '] ' + user.username + ': ' + data.text);
+        console.log(
+            '[' + user.room + '] ' +
+            user.username + ': ' +
+            text
+        );
 
         pushHistory(roomHistory, user.room, messageData);
-        
+
         io.to(user.room).emit('new_message', messageData);
-    });
+
+    } catch (error) {
+        console.error('Message save error:', error.message);
+    }
+});
 
     // ── Private messaging ──
     socket.on('send_dm', (data) => {
