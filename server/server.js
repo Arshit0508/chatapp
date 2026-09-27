@@ -129,7 +129,7 @@ socket.on('join', async (data) => {
     .lean();
 
     history.reverse();
-
+    
     socket.emit('room_history', {
         room: room,
         messages: history.map(function(message) {

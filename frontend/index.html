@@ -888,7 +888,7 @@ socket.on("room_history", function(data) {
     
     socket.on("new_message", function (data) {
 
-        
+        console.log("NEW MESSAGE RECEIVED:", data);
 
         addMessage(
             data.username,
