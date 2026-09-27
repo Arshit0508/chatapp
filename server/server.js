@@ -4,8 +4,35 @@ const { Server } = require('socket.io');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const Message = require('./models/Message');
-
+const Room = require('./models/Room');
+const roomRoutes = require('./routes/rooms');
 require('dotenv').config();
+async function seedRooms() {
+    const rooms = [
+        {
+            name: 'general',
+            displayName: 'General'
+        },
+        {
+            name: 'tech',
+            displayName: 'Tech'
+        },
+        {
+            name: 'random',
+            displayName: 'Random'
+        }
+    ];
+
+    for (const room of rooms) {
+        await Room.updateOne(
+            { name: room.name },
+            { $setOnInsert: room },
+            { upsert: true }
+        );
+    }
+
+    console.log('Chat rooms ready');
+}
 const connectDB = require('./config/db');
 
 const app = express();
@@ -35,7 +62,11 @@ io.use(function(socket, next) {
 
 app.use(express.json());
 const authRoutes = require('./routes/auth');
+const userRoutes = require('./routes/users');
+
 app.use('/api/auth', authRoutes);
+app.use('/api/users', userRoutes);
+app.use('/api/rooms', roomRoutes);
 
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
 
@@ -92,11 +123,13 @@ socket.on('join', async (data) => {
     const username = socket.user.username;
     const room = data.room;
 
-    const allowedRooms = ['general', 'tech', 'random'];
+    const roomExists = await Room.findOne({
+    name: room
+});
 
-    if (!allowedRooms.includes(room)) {
-        return;
-    }
+if (!roomExists) {
+    return;
+}
 
     users.set(socket.id, { username, room });
     usernameToSocket.set(username, socket.id);
@@ -164,15 +197,16 @@ socket.on('join', async (data) => {
             text: text
         });
 
-        const messageData = {
-            username: savedMessage.username,
-            text: savedMessage.text,
-            timestamp: savedMessage.createdAt.toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit'
-            }),
-            id: savedMessage._id.toString()
-        };
+       const messageData = {
+    username: savedMessage.username,
+    text: savedMessage.text,
+    timestamp: savedMessage.createdAt.toLocaleTimeString([], {
+        hour: '2-digit',
+        minute: '2-digit'
+    }),
+    id: savedMessage._id.toString(),
+    
+};
 
         console.log(
             '[' + user.room + '] ' +
@@ -190,41 +224,97 @@ socket.on('join', async (data) => {
 });
 
     // ── Private messaging ──
-    socket.on('send_dm', (data) => {
-        const sender = users.get(socket.id);
-        if (!sender) return;
+    socket.on('send_dm', async (data) => {
+    const sender = users.get(socket.id);
+    if (!sender) return;
 
-        const toUsername = data.to;
-        if (!toUsername || toUsername === sender.username) return;
+    const toUsername = data.to;
+    const text = data.text.trim();
 
-        const messageData = {
+    if (!toUsername || toUsername === sender.username) return;
+
+    if (!text || text.length > 500) return;
+
+    try {
+        const savedMessage = await Message.create({
             from: sender.username,
             to: toUsername,
-            text: data.text,
-            timestamp: getTime(),
-            id: 'dm-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8)
-        };
-
-        pushHistory(dmHistory, dmKey(sender.username, toUsername), messageData);
-
-        // Deliver to recipient (if online) and echo back to sender
-        io.to('user:' + toUsername).emit('new_dm', messageData);
-        socket.emit('new_dm', messageData);
-    });
-
-    socket.on('get_dm_history', (data) => {
-        const sender = users.get(socket.id);
-        if (!sender) return;
-
-        const withUsername = data.with;
-        const key = dmKey(sender.username, withUsername);
-        const history = (dmHistory.get(key) || []).map(function(msg) {
-            return Object.assign({}, msg, { reactions: reactionSummary(msg.id) });
+            text: text
         });
 
-        socket.emit('dm_history', { with: withUsername, messages: history });
-    });
+        const messageData = {
+            from: savedMessage.from,
+            to: savedMessage.to,
+            text: savedMessage.text,
+            timestamp: savedMessage.createdAt.toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit'
+            }),
+            id: savedMessage._id.toString()
+        };
 
+        pushHistory(
+            dmHistory,
+            dmKey(sender.username, toUsername),
+            messageData
+        );
+
+        io.to('user:' + toUsername).emit('new_dm', messageData);
+        socket.emit('new_dm', messageData);
+
+    } catch (error) {
+        console.error('DM save error:', error.message);
+    }
+});
+
+    socket.on('get_dm_history', async (data) => {
+    const sender = users.get(socket.id);
+    if (!sender) return;
+
+    const withUsername = data.with;
+
+    if (!withUsername || withUsername === sender.username) {
+        return;
+    }
+
+    try {
+        const history = await Message.find({
+            $or: [
+                {
+                    from: sender.username,
+                    to: withUsername
+                },
+                {
+                    from: withUsername,
+                    to: sender.username
+                }
+            ]
+        })
+        .sort({ createdAt: 1 })
+        .limit(50)
+        .lean();
+
+        socket.emit('dm_history', {
+            with: withUsername,
+            messages: history.map(function(message) {
+                return {
+                    from: message.from,
+                    to: message.to,
+                    text: message.text,
+                    timestamp: message.createdAt.toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    }),
+                    id: message._id.toString(),
+                    reactions: {}
+                };
+            })
+        });
+
+    } catch (error) {
+        console.error('DM history error:', error.message);
+    }
+});
     // ── Emoji reactions ──
     socket.on('react_message', (data) => {
         const user = users.get(socket.id);
@@ -327,7 +417,9 @@ socket.on('join', async (data) => {
 
 const PORT = process.env.PORT || 3000;
 
-connectDB().then(function() {
+connectDB().then(async function() {
+    await seedRooms();
+
     server.listen(PORT, function() {
         console.log('Chat Server running at http://localhost:' + PORT);
     });

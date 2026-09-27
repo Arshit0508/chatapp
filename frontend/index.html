@@ -703,6 +703,31 @@
     socket.on("connect_error", function (error) {
         console.log("Socket connection error:", error.message);
     });
+    async function loadRooms() {
+            try {
+                var response = await fetch("/api/rooms", {
+                    headers: {
+                        Authorization: "Bearer " + localStorage.getItem("token")
+                    }
+                });
+
+                var data = await response.json();
+
+                if (!response.ok) {
+                    console.error("Failed to load rooms:", data.message);
+                    return;
+                }
+
+                availableRooms = data.rooms.map(function (room) {
+                    return room.name;
+                });
+
+                renderRooms(availableRooms);
+
+            } catch (error) {
+                console.error("Failed to load rooms:", error);
+            }
+        }
 
     async function loginUser() {
         var email = document.getElementById("email-input").value;
@@ -738,11 +763,14 @@
             localStorage.setItem("token", data.token);
 
             socket.auth.token = data.token;
-
+            
+            
+            await loadRooms();
+            
             socket.once("connect", function () {
                 myUsername = data.user.username;
                 currentRoom = "general";
-
+                
                 socket.emit("join", {
                     room: currentRoom
                 });
@@ -775,7 +803,7 @@ var myUsername = "";
 var currentRoom = "general";
 var typingTimer = null;
 var isTyping = false;
-var availableRooms = ["general", "tech", "random"];
+var availableRooms = [];
 var REACTION_EMOJIS = ["👍", "❤️", "😂"];
 
 var roomIcons = { general: "&#127758;", tech: "&#128187;", random: "&#127922;" };
@@ -856,9 +884,13 @@ function switchRoom(newRoom) {
 
 function sendMessage() {
     var input = document.getElementById("msg-input");
-    var text = input.value.trim();
+  var text = input.value.trim();
     if (!text) return;
-    socket.emit("send_message", { text: text });
+
+    socket.emit("send_message", {
+        text: text
+    });
+
     input.value = "";
     stopTyping();
 }
@@ -887,9 +919,6 @@ socket.on("room_history", function(data) {
 });
     
     socket.on("new_message", function (data) {
-
-        console.log("NEW MESSAGE RECEIVED:", data);
-
         addMessage(
             data.username,
             data.text,
@@ -898,36 +927,50 @@ socket.on("room_history", function(data) {
             data.id,
             {}
         );
-
     });
 
-socket.on("user_joined", function(data) { addSystemMessage(data.message); });
-socket.on("user_left", function(data) { addSystemMessage(data.message); });
+    socket.on("room_users", function (usersList) {
+        var container = document.getElementById("online-users");
+        var countEl = document.getElementById("online-count");
+        container.innerHTML = "";
 
-socket.on("room_users", function(usersList) {
-    var container = document.getElementById("online-users");
-    var countEl = document.getElementById("online-count");
-    container.innerHTML = "";
-    for (var i = 0; i < usersList.length; i++) {
-        var uname = usersList[i];
-        var div = document.createElement("div");
-        div.className = "online-user" + (uname === currentDmUser ? " dm-active" : "");
-        if (uname !== myUsername) {
-            div.onclick = (function(u) { return function() { openDM(u); }; })(uname);
-            div.title = "Message " + uname + " privately";
+        for (var i = 0; i < usersList.length; i++) {
+            var uname = usersList[i];
+
+            var div = document.createElement("div");
+            div.className = "online-user" + (uname === currentDmUser ? " dm-active" : "");
+
+            if (uname !== myUsername) {
+                div.onclick = (function (u) {
+                    return function () {
+                        openDM(u);
+                    };
+                })(uname);
+
+                div.title = "Message " + uname + " privately";
+            }
+
+            var av = document.createElement("div");
+            av.className = "online-avatar";
+            av.textContent = getInitial(uname);
+
+            var badge = document.createElement("div");
+            badge.className = "online-badge";
+            av.appendChild(badge);
+
+            div.appendChild(av);
+
+            div.appendChild(
+                document.createTextNode(
+                    uname + (uname === myUsername ? " (you)" : "")
+                )
+            );
+
+            container.appendChild(div);
         }
-        var av = document.createElement("div");
-        av.className = "online-avatar";
-        av.textContent = getInitial(uname);
-        var badge = document.createElement("div");
-        badge.className = "online-badge";
-        av.appendChild(badge);
-        div.appendChild(av);
-        div.appendChild(document.createTextNode(uname + (uname === myUsername ? " (you)" : "")));
-        container.appendChild(div);
-    }
-    countEl.textContent = usersList.length + " online";
-});
+
+        countEl.textContent = usersList.length + " online";
+    });
 
 socket.on("user_typing", function(data) {
     var el = document.getElementById("typing-indicator");

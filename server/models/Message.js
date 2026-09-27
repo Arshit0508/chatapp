@@ -3,14 +3,23 @@ const mongoose = require('mongoose');
 const messageSchema = new mongoose.Schema(
     {
         room: {
-            type: String,
-            required: true,
-            trim: true
-        },
+    type: String,
+    trim: true
+},
+
+from: {
+    type: String,
+    trim: true
+},
+
+to: {
+    type: String,
+    trim: true
+},
 
         username: {
             type: String,
-            required: true,
+            
             trim: true
         },
 
