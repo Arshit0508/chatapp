@@ -1,104 +1,519 @@
 # ChatApp 💬
 
-> A real-time chat application powered by WebSockets — instant messaging with no page refreshes.
+> A full-stack real-time chat application built with Node.js, Express.js, Socket.IO, MongoDB, and JWT authentication.
 
-ChatApp enables seamless, low-latency communication between users using native WebSockets over an Express.js server. Messages are delivered instantly across all connected clients in real time.
-
----
-
-## Features
-
-- ⚡ **Real-time messaging** — Instant message delivery using WebSockets
-- 🔗 **Persistent connections** — No polling, no delays — true bidirectional communication
-- 🖥️ **Express.js backend** — Lightweight and fast HTTP + WebSocket server
-- 👥 **Multi-user support** — Multiple clients can connect and chat simultaneously
-- 🌐 **Browser-based** — Works directly in the browser, no app install needed
+ChatApp provides real-time communication between authenticated users through persistent Socket.IO connections. It supports public chat rooms, private messaging, message history, online-user presence, user profiles, and persistent storage using MongoDB.
 
 ---
 
-## Tech Stack
+## ✨ Features
 
-| Layer | Technology |
-|-------|-----------|
-| Backend | Node.js + Express.js |
-| Real-time | WebSockets (ws) |
-| Frontend | HTML / CSS / JavaScript |
+### 🔐 Authentication
+
+* User registration and login
+* JWT-based authentication
+* Password hashing with `bcryptjs`
+* Protected REST API endpoints
+* JWT authentication for Socket.IO connections
+* Persistent login token stored in the browser
+
+### 💬 Real-Time Messaging
+
+* Real-time message delivery using Socket.IO
+* Persistent two-way communication
+* Public chat rooms
+* Private one-to-one messaging
+* Room switching
+* Typing indicators
+* Emoji reactions
+* Message timestamps
+* Online-user status synchronized across connected clients
+
+### 🗄️ Persistent Chat History
+
+* Room messages stored in MongoDB
+* Private messages stored in MongoDB
+* Recent room history loaded when joining a room
+* Private conversation history retrieved when opening a DM
+* Mongoose schemas for structured message storage
+
+### 👤 User Profiles
+
+* User profile retrieval
+* Display name management
+* Bio management
+* Profile data persisted in MongoDB
+
+### 👥 Multi-User Support
+
+* Multiple authenticated clients can connect simultaneously
+* Online users are synchronized within chat rooms
+* User join/leave events are broadcast in real time
+* Tested manually with 5 simultaneous authenticated clients
 
 ---
 
-## Getting Started
+## 🛠️ Tech Stack
+
+| Layer                   | Technology            |
+| ----------------------- | --------------------- |
+| Runtime                 | Node.js               |
+| Backend                 | Express.js            |
+| Real-Time Communication | Socket.IO             |
+| Database                | MongoDB               |
+| ODM                     | Mongoose              |
+| Authentication          | JSON Web Tokens (JWT) |
+| Password Hashing        | bcryptjs              |
+| Configuration           | dotenv                |
+| Frontend                | HTML, CSS, JavaScript |
+| API Format              | REST + JSON           |
+
+---
+
+## 🏗️ Architecture
+
+ChatApp uses both REST APIs and Socket.IO connections.
+
+```text
+                         ┌──────────────────────┐
+                         │      Browser         │
+                         │ HTML / CSS / JS      │
+                         └──────────┬───────────┘
+                                    │
+                    ┌───────────────┴────────────────┐
+                    │                                │
+              REST API                         Socket.IO
+                    │                                │
+                    ▼                                ▼
+          ┌─────────────────────────────────────────────┐
+          │              Express / Node.js              │
+          │                                             │
+          │  Authentication   User APIs   Room APIs    │
+          │                                             │
+          │        Real-Time Socket.IO Events           │
+          └──────────────────────┬──────────────────────┘
+                                 │
+                                 ▼
+                       ┌──────────────────┐
+                       │     MongoDB      │
+                       │                  │
+                       │ Users            │
+                       │ Rooms            │
+                       │ Messages         │
+                       └──────────────────┘
+```
+
+### Communication Flow
+
+1. A user registers or logs in through the REST API.
+2. The server validates the credentials and returns a JWT.
+3. The frontend stores the JWT and uses it for authenticated requests.
+4. The JWT is also supplied when establishing the Socket.IO connection.
+5. The server verifies the token before accepting the socket connection.
+6. Authenticated users can join chat rooms and communicate in real time.
+7. Messages are persisted in MongoDB before being broadcast to connected clients.
+8. Room history and private-message history are retrieved from MongoDB when requested.
+
+---
+
+## 🔑 Authentication Flow
+
+Authentication is implemented using JWT.
+
+```text
+User
+ │
+ │ POST /api/auth/login
+ ▼
+Express API
+ │
+ │ Verify email + password
+ ▼
+MongoDB User
+ │
+ │ Password verified
+ ▼
+JWT generated
+ │
+ ▼
+Browser
+ │
+ ├── REST requests
+ │     Authorization: Bearer <token>
+ │
+ └── Socket.IO connection
+       auth: { token: <token> }
+```
+
+Passwords are hashed before being stored using `bcryptjs`.
+
+The JWT contains the authenticated user's ID and username and is verified by both the REST authentication middleware and Socket.IO middleware.
+
+---
+
+## 📡 REST API
+
+### Authentication
+
+#### Register
+
+```http
+POST /api/auth/register
+```
+
+Request:
+
+```json
+{
+  "username": "arshit",
+  "email": "arshit@example.com",
+  "password": "password123"
+}
+```
+
+#### Login
+
+```http
+POST /api/auth/login
+```
+
+Request:
+
+```json
+{
+  "email": "arshit@example.com",
+  "password": "password123"
+}
+```
+
+Returns a JWT token on successful authentication.
+
+#### Get Current User
+
+```http
+GET /api/auth/me
+Authorization: Bearer <token>
+```
+
+---
+
+### Rooms
+
+#### Get Available Rooms
+
+```http
+GET /api/rooms
+Authorization: Bearer <token>
+```
+
+The application currently initializes the following rooms:
+
+* `general`
+* `tech`
+* `random`
+
+Rooms are stored in MongoDB and validated before a user joins them.
+
+---
+
+### User Profiles
+
+#### Get Profile
+
+```http
+GET /api/users/profile
+Authorization: Bearer <token>
+```
+
+#### Update Profile
+
+```http
+PUT /api/users/profile
+Authorization: Bearer <token>
+```
+
+Example:
+
+```json
+{
+  "displayName": "Arshit",
+  "bio": "Computer Science student"
+}
+```
+
+---
+
+## ⚡ Socket.IO Events
+
+The application uses Socket.IO for real-time communication.
+
+### Client → Server
+
+| Event            | Purpose                               |
+| ---------------- | ------------------------------------- |
+| `join`           | Join a chat room                      |
+| `send_message`   | Send a room message                   |
+| `send_dm`        | Send a private message                |
+| `get_dm_history` | Retrieve private conversation history |
+| `typing`         | Notify users that someone is typing   |
+| `stop_typing`    | Stop typing notification              |
+| `reaction`       | Add/remove message reactions          |
+
+### Server → Client
+
+| Event          | Purpose                           |
+| -------------- | --------------------------------- |
+| `room_history` | Send previous room messages       |
+| `new_message`  | Deliver a new room message        |
+| `new_dm`       | Deliver a private message         |
+| `dm_history`   | Send private conversation history |
+| `room_users`   | Synchronize online users          |
+| `user_joined`  | Notify users when someone joins   |
+| `user_left`    | Notify users when someone leaves  |
+| `user_typing`  | Display typing indicator          |
+
+---
+
+## 🗃️ Database Design
+
+MongoDB is used for persistent application data.
+
+### User
+
+Stores:
+
+* Username
+* Email
+* Hashed password
+* Display name
+* Bio
+* Creation/update timestamps
+
+### Room
+
+Stores:
+
+* Room name
+* Display name
+* Creation/update timestamps
+
+### Message
+
+The message schema supports both room messages and private messages.
+
+Room messages use:
+
+```text
+room
+username
+text
+```
+
+Private messages use:
+
+```text
+from
+to
+text
+```
+
+Messages also contain MongoDB timestamps.
+
+---
+
+## 📁 Project Structure
+
+```text
+chatapp/
+│
+├── frontend/
+│   └── index.html
+│
+├── server/
+│   ├── config/
+│   │   └── db.js
+│   │
+│   ├── middleware/
+│   │   └── auth.js
+│   │
+│   ├── models/
+│   │   ├── User.js
+│   │   ├── Room.js
+│   │   └── Message.js
+│   │
+│   ├── routes/
+│   │   ├── auth.js
+│   │   ├── rooms.js
+│   │   └── users.js
+│   │
+│   └── server.js
+│
+├── .env.example
+├── .gitignore
+├── package.json
+├── package-lock.json
+└── README.md
+```
+
+---
+
+## 🚀 Getting Started
 
 ### Prerequisites
 
-- Node.js (v18+)
-- npm
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/Arshit0508/chatapp.git
-   cd chatapp
-   ```
-
-2. **Install dependencies**
-   ```bash
-   npm install
-   ```
-
-3. **Start the server**
-   ```bash
-   node server.js
-   ```
-
-4. **Open in browser**
-   ```
-   http://localhost:3000
-   ```
+* Node.js 18+
+* npm
+* MongoDB Atlas account or a local MongoDB instance
 
 ---
 
-## How It Works
+### 1. Clone the Repository
 
-1. Client connects to the server via a WebSocket handshake
-2. Server maintains a list of all active connections
-3. When a user sends a message, the server broadcasts it to all connected clients instantly
-4. On disconnect, the connection is cleanly removed from the pool
-
-```
-Client A ──┐
-           ├──► Express + WebSocket Server ──► Broadcasts to all
-Client B ──┘
+```bash
+git clone https://github.com/Arshit0508/chatapp.git
+cd chatapp
 ```
 
 ---
 
-## Project Structure
+### 2. Install Dependencies
 
-```
-chatapp/
-├── server.js        # Express server + WebSocket logic
-├── public/
-│   ├── index.html   # Chat UI
-│   ├── style.css    # Styling
-│   └── client.js    # Frontend WebSocket client
-└── package.json
+```bash
+npm install
 ```
 
 ---
 
-## Contributing
+### 3. Configure Environment Variables
 
-Contributions are welcome! Feel free to open issues or submit pull requests.
+Create a `.env` file in the project root.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/your-feature`)
-3. Commit your changes (`git commit -m 'Add some feature'`)
-4. Push to the branch (`git push origin feature/your-feature`)
-5. Open a Pull Request
+You can use `.env.example` as a template:
+
+```env
+MONGO_URI=your_mongodb_connection_string
+JWT_SECRET=your_jwt_secret
+PORT=3000
+```
+
+Do not commit your real `.env` file or expose your MongoDB credentials or JWT secret.
 
 ---
 
-## License
+### 4. Start the Server
 
-This project is open source. See [LICENSE](LICENSE) for details.
+```bash
+node server/server.js
+```
+
+On successful startup, the server connects to MongoDB and initializes the default chat rooms.
+
+You should see output similar to:
+
+```text
+MongoDB connected
+Chat rooms ready
+Chat Server running at http://localhost:3000
+```
+
+---
+
+### 5. Open the Application
+
+Open:
+
+```text
+http://localhost:3000
+```
+
+Register an account or log in with an existing account.
+
+---
+
+## 🧪 Testing
+
+The application has been manually tested with multiple authenticated browser sessions.
+
+The multi-user test verified:
+
+* 5 simultaneous authenticated clients
+* Successful Socket.IO connections
+* Online-user synchronization
+* Real-time room messaging
+* User join/leave updates
+* Private messaging
+* Message persistence
+* Chat history retrieval
+
+The project is intended primarily as a learning and portfolio project, so performance figures are not presented as production benchmarks.
+
+---
+
+## 🔒 Security Considerations
+
+The application currently includes:
+
+* JWT authentication
+* Password hashing using `bcryptjs`
+* Protected REST endpoints
+* JWT verification during Socket.IO connection
+* Server-side message length validation
+* Server-side room validation
+* `.env` excluded from version control
+
+For production deployment, additional protections such as rate limiting, HTTPS, stronger input validation, refresh-token handling, and more comprehensive authorization would be appropriate.
+
+---
+
+## 🧠 Key Engineering Concepts Demonstrated
+
+This project demonstrates practical implementation of:
+
+* RESTful API design
+* JWT authentication
+* Password hashing
+* WebSocket-style real-time communication through Socket.IO
+* Persistent bidirectional connections
+* Event-driven server architecture
+* MongoDB data persistence
+* Mongoose schema design
+* Client-server communication
+* Room-based messaging
+* Private messaging
+* Online presence synchronization
+* Asynchronous JavaScript
+* Middleware-based authentication
+* Error handling and server-side validation
+
+---
+
+## 🔮 Possible Future Improvements
+
+Potential extensions include:
+
+* Message pagination for large chat histories
+* Persistent reaction storage
+* Read receipts
+* Message editing/deletion
+* File and image sharing
+* More granular room permissions
+* Rate limiting
+* Automated integration and concurrency tests
+* Production deployment with HTTPS
+* Improved frontend modularization
+
+---
+
+## 👨‍💻 Author
+
+**Arshit**
+
+Computer Science undergraduate at NIT Jalandhar.
+
+GitHub: [Arshit0508](https://github.com/Arshit0508)
+
+---
+
+## 📄 License
+
+This project is currently intended as a personal/educational portfolio project.
