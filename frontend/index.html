@@ -26,6 +26,10 @@
             width: 380px;
             text-align: center;
             box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+                display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
         }
 
         .login-logo {
@@ -597,12 +601,10 @@
 <!-- LOGIN -->
 <div class="login-screen" id="login-screen">
     <div class="login-logo">&#128172;</div>
-
     <h1>ChatApp</h1>
     <p>Login to continue</p>
 
     <input type="email" id="email-input" placeholder="Email" />
-
     <input type="password" id="password-input" placeholder="Password" />
 
     <button class="join-btn" onclick="loginUser()">
@@ -610,6 +612,40 @@
     </button>
 
     <p id="login-error"></p>
+
+    <p>
+        Don't have an account?
+        <button type="button" onclick="showRegister()">
+            Register
+        </button>
+    </p>
+</div>
+
+<div class="login-screen" id="register-screen" style="display: none;">
+    <div class="login-logo">&#128172;</div>
+    <h1>ChatApp</h1>
+    <p>Create your account</p>
+
+    <input type="text" id="register-username" placeholder="Username" />
+
+    <input type="email" id="register-email" placeholder="Email" />
+
+    <input type="password" id="register-password" placeholder="Password" />
+
+    <input type="password" id="register-confirm-password" placeholder="Confirm Password" />
+
+    <button class="join-btn" onclick="registerUser()">
+        Create Account
+    </button>
+
+    <p id="register-error"></p>
+
+    <p>
+        Already have an account?
+        <button type="button" onclick="showLogin()">
+            Login
+        </button>
+    </p>
 </div>
 
 <!-- MAIN APP -->
@@ -728,7 +764,73 @@
                 console.error("Failed to load rooms:", error);
             }
         }
+        function showRegister() {
+                document.getElementById("login-screen").style.display = "none";
+                document.getElementById("register-screen").style.display = "flex";
 
+                document.getElementById("register-error").textContent = "";
+            }
+
+            function showLogin() {
+                document.getElementById("register-screen").style.display = "none";
+                document.getElementById("login-screen").style.display = "flex";
+
+                document.getElementById("login-error").textContent = "";
+            }
+
+            async function registerUser() {
+                var username = document.getElementById("register-username").value.trim();
+                var email = document.getElementById("register-email").value.trim();
+                var password = document.getElementById("register-password").value;
+                var confirmPassword = document.getElementById("register-confirm-password").value;
+                var errorElement = document.getElementById("register-error");
+
+                errorElement.textContent = "";
+
+                if (!username || !email || !password || !confirmPassword) {
+                    errorElement.textContent = "All fields are required";
+                    return;
+                }
+
+                if (password !== confirmPassword) {
+                    errorElement.textContent = "Passwords do not match";
+                    return;
+                }
+
+                try {
+                    var response = await fetch("/api/auth/register", {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify({
+                            username: username,
+                            email: email,
+                            password: password
+                        })
+                    });
+
+                    var data = await response.json();
+
+                    if (!response.ok) {
+                        errorElement.textContent = data.message;
+                        return;
+                    }
+
+                    alert("Account created successfully. Please login.");
+
+                    document.getElementById("register-username").value = "";
+                    document.getElementById("register-email").value = "";
+                    document.getElementById("register-password").value = "";
+                    document.getElementById("register-confirm-password").value = "";
+
+                    showLogin();
+
+                } catch (error) {
+                    errorElement.textContent = "Unable to connect to server";
+                    console.error(error);
+                }
+            }
     async function loginUser() {
         var email = document.getElementById("email-input").value;
         var password = document.getElementById("password-input").value;
