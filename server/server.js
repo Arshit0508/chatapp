@@ -145,7 +145,7 @@ if (!roomExists) {
 
     socket.join('user:' + username);
 
-    console.log(username + ' joined room: ' + room);
+    
 
     io.to(room).emit('user_joined', {
         username: username,
